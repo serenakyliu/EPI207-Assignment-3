@@ -1,0 +1,174 @@
+---
+title: "EPI 207 Assignment 3"
+author: "EPI207 Student"
+output: html_document
+date: "26 Feb 2025"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Loading Libraries
+```{r}
+getwd()
+library(haven)
+library(tidyverse)
+library(dplyr)
+library(labelled)
+library(tableone)
+library(survey)
+```
+
+#Loading CHIS 2021 data
+```{r}
+setwd("~/Desktop/Y2 winter/EPI207/assignment 3")
+adult <- read_sas("adult.sas7bdat", NULL)
+```
+
+#Cleaning CHIS data
+```{r}
+# Select relevant columns based on the dictionary
+rakedw_vars <- paste0("RAKEDW", 0:80)
+
+# Define the selected variables and append the RAKEDW variables
+selected_vars <- c("AF110", "AF112", "AF113", "AK28", "AM19", "SRAGE_P1",
+                   "AM20", "AM21", "AM39", "AM183", "MARIT", "OMBSRR_P1", 
+                   "POVLL", "SPK_ENG", "SREDUC", "SRSEX", "UR_CLRT4", rakedw_vars)
+
+
+
+# Filter dataset to only include selected variables
+clean_data <- adult %>%
+  select(all_of(selected_vars))
+
+```
+
+```{r}
+#cleaning variables
+clean_data <- clean_data %>%
+  # Condense age variable into the desired age groups
+  mutate(
+    AGE_GROUP = case_when(
+      SRAGE_P1 >= 18 & SRAGE_P1 <= 29 ~ "18–29 Years",
+      SRAGE_P1 >= 30 & SRAGE_P1 <= 39 ~ "30–39 Years",
+      SRAGE_P1 >= 40 & SRAGE_P1 <= 49 ~ "40–49 Years",
+      SRAGE_P1 >= 50 & SRAGE_P1 <= 64 ~ "50–64 Years",
+      SRAGE_P1 >= 65 ~ "65 or older",
+      TRUE ~ NA_character_  # Assign NA if none of the conditions match
+    )
+  ) %>%
+  # Remove inapplicable answers (AF112 != -1)
+  filter(AF112 != -1) 
+
+
+
+
+```
+
+```{r}
+# Convert categorical variables to factors
+cleaned <- clean_data %>%
+  # Remove inapplicable responses first (before factor conversion)
+  filter(AF112 != -1) %>%
+  mutate(
+    OMBSRR_P1 = factor(OMBSRR_P1, levels = c(1, 2, 3, 4, 5, 6), 
+                       labels = c("Hispanic", "White, Non-Hispanic", "African American, Not Hispanic",
+                                  "American Indian/Alaskan Native, Non-Hispanic", "Asian, Non-Hispanic", "Other")),
+    
+    SRSEX = factor(SRSEX, levels = c(1, 2), labels = c("Male", "Female")),
+    
+    MARIT = factor(MARIT, levels = c(1, 2, 3), 
+                   labels = c("Married", "Other/Sep/Div/Living W/Partner", "Never Married")),
+    
+    SPK_ENG = factor(SPK_ENG, levels = c(1, 2, 3), 
+                     labels = c("Speak Only English", "Very Well/Well", "Not Well/Not At All")),
+    
+    AM183 = factor(AM183, levels = c(1, 2, 3, 4, 5), 
+                   labels = c("Very Stable", "Fairly Stable", "Somewhat Stable", "Fairly Unstable", "Very Unstable")),
+    
+    SREDUC = factor(SREDUC, levels = c(1, 2, 3, 4), 
+                    labels = c("< High School Education", "High School Education", "Some College", "College Degree Or Above")),
+    
+    POVLL = factor(POVLL, levels = c(1, 2, 3, 4), 
+                   labels = c("0-99% FPL", "100-199% FPL", "200-299% FPL", "300% FPL and Above")),
+    
+    UR_CLRT4 = factor(UR_CLRT4, levels = c(1, 2, 3, 4), 
+                      labels = c("Urban", "Mixed", "Suburban", "Rural")),
+    
+    AK28 = factor(AK28, levels = c(-2, 1, 2, 3, 4), 
+                  labels = c("PROXY SKIPPED", "All Of The Time", "Most Of The Time", "Some Of The Time", "None Of The Time")),
+    
+    AM19 = factor(AM19, levels = c(-2, 1, 2, 3, 4), 
+                  labels = c("PROXY SKIPPED", "Strongly Agree", "Agree", "Disagree", "Strongly Disagree")),
+    
+    AM20 = factor(AM20, levels = c(-2, 1, 2, 3, 4), 
+                  labels = c("PROXY SKIPPED", "Strongly Agree", "Agree", "Disagree", "Strongly Disagree")),
+    
+    AM21 = factor(AM21, levels = c(-2, 1, 2, 3, 4), 
+                  labels = c("PROXY SKIPPED", "Strongly Agree", "Agree", "Disagree", "Strongly Disagree")),
+    
+    AM39 = factor(AM39, levels = c(1, 2), labels = c("Yes", "No")),
+    
+    AF110 = factor(AF110, levels = c(1, 2), labels = c("Yes", "No")),
+    
+    AF112 = factor(AF112, levels = c(-1, 1, 2), 
+                   labels = c("INAPPLICABLE", "Yes", "No"))
+  )
+
+
+cleaned2 <- cleaned %>%
+  rename(
+    Race = OMBSRR_P1,
+    Sex = SRSEX,
+    `Marital Status` = MARIT,
+    `English Proficiency` = SPK_ENG,
+    Education = SREDUC,
+    `Poverty Level` = POVLL,
+    Urbanicity = UR_CLRT4,
+    `Property Damage` = AF113,
+    `Housing Stability` = AM183,
+    `People in Neighborhood Willing to Help Each Other` = AM19,
+    `People in Neighborhood Do Not Get Along` = AM20,
+    `Trusts Neighborhood` = AM21,
+    `Feels Safe in Neighborhood` = AK28,
+    `Volunteered In Past 12 Months` = AM39,
+    `Extreme Weather Exposure` = AF110,
+    `Mental Health Impact` = AF112
+  )
+
+# Check renamed variables
+colnames(cleaned2)
+
+```
+
+
+
+#Table one
+```{r}
+listVars <- c("AGE_GROUP", "Sex", "Race", "Marital Status", "English Proficiency", 
+              "Education", "Poverty Level", "Urbanicity", "Housing Stability", 
+              "People in Neighborhood Willing to Help Each Other", 
+              "People in Neighborhood Do Not Get Along", "Trusts Neighborhood", 
+              "Feels Safe in Neighborhood", "Volunteered In Past 12 Months", "Property Damage")
+
+catVars <- c("AGE_GROUP", "Sex", "Race", "Marital Status", "English Proficiency", 
+             "Education", "Poverty Level", "Urbanicity", "Housing Stability", 
+             "People in Neighborhood Willing to Help Each Other", 
+             "People in Neighborhood Do Not Get Along", "Trusts Neighborhood", 
+             "Feels Safe in Neighborhood", "Volunteered In Past 12 Months", 
+             "Property Damage")
+
+
+# Create Table 1 stratified by Property Damage (AF113)
+table1.stratified <- CreateTableOne(vars = listVars, strata = "Mental Health Impact", data = cleaned2, factorVars = catVars, includeNA = TRUE)
+
+
+# Print Table 1 with all levels shown
+a <- print(table1.stratified, showAllLevels = TRUE, formatOptions = list(big.mark = ","))
+
+# Save Table 1 as a CSV file
+write.csv(a, "table1.csv")
+
+
+```
